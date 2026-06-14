@@ -21,9 +21,13 @@ import {
   CheckCircle,
   Clock,
   XCircle,
+  Database,
+  PackageOpen,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { mockProducts } from '../../data/mockData';
+import { fetchProducts } from '../../services/products';
+import { useAsyncData } from '../../hooks/useAsyncData';
 import type { Product } from '../../types';
 
 const containerVariants = {
@@ -51,15 +55,25 @@ export default function Products() {
 
   const ITEMS_PER_PAGE = 8;
 
+  const {
+    data: products,
+    loading,
+    error,
+    source,
+    refetch,
+  } = useAsyncData(fetchProducts, mockProducts, []);
+
+  const isDemo = source === 'demo';
+
   const filters = [
-    { id: 'all', label: 'All Products', count: mockProducts.length },
-    { id: 'active', label: 'Active', count: mockProducts.filter((p) => p.status === 'active').length },
-    { id: 'draft', label: 'Draft', count: mockProducts.filter((p) => p.status === 'draft').length },
-    { id: 'needs-creative', label: 'Needs Creative', count: mockProducts.filter((p) => p.creativeStatus === 'none' || p.creativeStatus === 'pending').length },
-    { id: 'synced', label: 'Synced', count: mockProducts.filter((p) => p.feedStatus === 'synced').length },
+    { id: 'all', label: 'All Products', count: products.length },
+    { id: 'active', label: 'Active', count: products.filter((p) => p.status === 'active').length },
+    { id: 'draft', label: 'Draft', count: products.filter((p) => p.status === 'draft').length },
+    { id: 'needs-creative', label: 'Needs Creative', count: products.filter((p) => p.creativeStatus === 'none' || p.creativeStatus === 'pending').length },
+    { id: 'synced', label: 'Synced', count: products.filter((p) => p.feedStatus === 'synced').length },
   ];
 
-  const filteredProducts = mockProducts.filter((product) => {
+  const filteredProducts = products.filter((product) => {
     const matchesSearch =
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.sku.toLowerCase().includes(searchQuery.toLowerCase());
@@ -170,15 +184,25 @@ export default function Products() {
       {/* Header */}
       <motion.div variants={itemVariants} className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-heading-xl text-[rgb(var(--color-text-primary))]">Products</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-heading-xl text-[rgb(var(--color-text-primary))]">Products</h1>
+            {isDemo && (
+              <span className="badge-warning inline-flex items-center gap-1" title="Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to load live data">
+                <Database size={12} />
+                Demo data
+              </span>
+            )}
+          </div>
           <p className="text-body-md text-[rgb(var(--color-text-secondary))]">
-            {mockProducts.length} products from your Shopify store
+            {loading
+              ? 'Loading products…'
+              : `${products.length} products${isDemo ? ' (sample)' : ' from your Shopify store'}`}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="btn-secondary btn-md">
-            <RefreshCw size={18} />
-            Sync Products
+          <button className="btn-secondary btn-md" onClick={refetch} disabled={loading}>
+            <RefreshCw size={18} className={clsx(loading && 'animate-spin')} />
+            {loading ? 'Refreshing…' : 'Sync Products'}
           </button>
           <button className="btn-primary btn-md">
             <Sparkles size={18} />
@@ -186,6 +210,32 @@ export default function Products() {
           </button>
         </div>
       </motion.div>
+
+      {/* Error banner — failed to reach the backend */}
+      {error && (
+        <motion.div
+          variants={itemVariants}
+          className="card-lg p-4 mb-6 bg-error-50 dark:bg-error-950/30 border-error-200 dark:border-error-800"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <AlertCircle size={20} className="text-error-600 shrink-0" />
+              <div>
+                <div className="font-medium text-[rgb(var(--color-text-primary))]">
+                  Couldn’t load live products
+                </div>
+                <div className="text-caption text-[rgb(var(--color-text-secondary))]">
+                  {error} — showing sample data instead.
+                </div>
+              </div>
+            </div>
+            <button className="btn-secondary btn-sm" onClick={refetch}>
+              <RefreshCw size={16} />
+              Retry
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       {/* Filters & Search */}
       <motion.div variants={itemVariants} className="card-lg p-4 mb-6">
@@ -409,6 +459,38 @@ export default function Products() {
               </tr>
             </thead>
             <tbody>
+              {loading &&
+                products.length === 0 &&
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={`skeleton-${i}`} className="table-row">
+                    <td className="table-cell" colSpan={10}>
+                      <div className="h-10 rounded-lg bg-[rgb(var(--color-bg-tertiary))] animate-pulse" />
+                    </td>
+                  </tr>
+                ))}
+
+              {!loading && paginatedProducts.length === 0 && (
+                <tr>
+                  <td className="table-cell" colSpan={10}>
+                    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                      <div className="w-12 h-12 rounded-xl bg-[rgb(var(--color-bg-tertiary))] flex items-center justify-center">
+                        <PackageOpen size={24} className="text-[rgb(var(--color-text-tertiary))]" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-[rgb(var(--color-text-primary))]">
+                          {searchQuery || activeFilter ? 'No products match your filters' : 'No products yet'}
+                        </div>
+                        <div className="text-caption text-[rgb(var(--color-text-secondary))]">
+                          {searchQuery || activeFilter
+                            ? 'Try clearing the search or filters.'
+                            : 'Connect a Shopify store and sync to see products here.'}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
               {paginatedProducts.map((product) => (
                 <motion.tr
                   key={product.id}
