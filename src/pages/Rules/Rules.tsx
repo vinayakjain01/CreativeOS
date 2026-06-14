@@ -1,25 +1,26 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
   Play,
   Pause,
   MoreVertical,
-  ChevronRight,
   GitBranch,
   Zap,
   AlertTriangle,
   CheckCircle,
-  Clock,
   Trash2,
   Edit3,
   Copy,
   Layers,
   ArrowRight,
   GripVertical,
+  Database,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { mockRules } from '../../data/mockData';
+import { fetchRules } from '../../services/rules';
+import { useAsyncData } from '../../hooks/useAsyncData';
 import type { Rule, RuleCondition, RuleAction } from '../../types';
 
 const containerVariants = {
@@ -36,9 +37,21 @@ const itemVariants = {
 };
 
 export default function Rules() {
-  const [rules, setRules] = useState(mockRules);
+  const { data: loadedRules, loading, source } = useAsyncData(fetchRules, mockRules, []);
+  const [rules, setRules] = useState<Rule[]>(mockRules);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingRule, setEditingRule] = useState<Rule | null>(null);
+
+  const isDemo = source === 'demo';
+
+  // Sync local (optimistically-toggleable) state when a fetch resolves.
+  useEffect(() => {
+    setRules(loadedRules);
+  }, [loadedRules]);
+
+  const templatesLinked = new Set(
+    rules.map((r) => String(r.actions[0]?.config?.templateId ?? '')).filter(Boolean),
+  ).size;
 
   const toggleRule = (id: string) => {
     setRules((prev) =>
@@ -58,7 +71,15 @@ export default function Rules() {
       {/* Header */}
       <motion.div variants={itemVariants} className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-heading-xl text-[rgb(var(--color-text-primary))]">Rules Engine</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-heading-xl text-[rgb(var(--color-text-primary))]">Rules Engine</h1>
+            {isDemo && (
+              <span className="badge-warning inline-flex items-center gap-1" title="Set Supabase env vars to load live rules">
+                <Database size={12} />
+                Demo data
+              </span>
+            )}
+          </div>
           <p className="text-body-md text-[rgb(var(--color-text-secondary))]">
             Automate creative generation with condition-based rules
           </p>
@@ -120,7 +141,7 @@ export default function Rules() {
               <Layers size={20} className="text-accent-600" />
             </div>
             <div>
-              <div className="text-heading-m font-bold text-[rgb(var(--color-text-primary))]">5</div>
+              <div className="text-heading-m font-bold text-[rgb(var(--color-text-primary))]">{templatesLinked}</div>
               <div className="text-body-sm text-[rgb(var(--color-text-secondary))]">Templates Linked</div>
             </div>
           </div>
@@ -129,20 +150,37 @@ export default function Rules() {
 
       {/* Rules List */}
       <motion.div variants={itemVariants} className="space-y-4">
-        {rules
-          .sort((a, b) => a.priority - b.priority)
-          .map((rule, index) => (
-            <RuleCard
-              key={rule.id}
-              rule={rule}
-              index={index}
-              onToggle={() => toggleRule(rule.id)}
-              onEdit={() => {
-                setEditingRule(rule);
-                setShowBuilder(true);
-              }}
-            />
-          ))}
+        {loading && rules.length === 0 ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <div key={`sk-${i}`} className="card-lg h-32 bg-[rgb(var(--color-bg-tertiary))] animate-pulse" />
+          ))
+        ) : rules.length === 0 ? (
+          <div className="card-lg p-12 flex flex-col items-center text-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-[rgb(var(--color-bg-tertiary))] flex items-center justify-center">
+              <GitBranch size={24} className="text-[rgb(var(--color-text-tertiary))]" />
+            </div>
+            <div>
+              <div className="font-medium text-[rgb(var(--color-text-primary))]">No rules yet</div>
+              <div className="text-caption text-[rgb(var(--color-text-secondary))]">
+                Create a rule to auto-assign templates to matching products.
+              </div>
+            </div>
+          </div>
+        ) : (
+          [...rules]
+            .sort((a, b) => a.priority - b.priority)
+            .map((rule) => (
+              <RuleCard
+                key={rule.id}
+                rule={rule}
+                onToggle={() => toggleRule(rule.id)}
+                onEdit={() => {
+                  setEditingRule(rule);
+                  setShowBuilder(true);
+                }}
+              />
+            ))
+        )}
       </motion.div>
 
       {/* Rule Builder Modal */}
@@ -163,12 +201,10 @@ export default function Rules() {
 
 function RuleCard({
   rule,
-  index,
   onToggle,
   onEdit,
 }: {
   rule: Rule;
-  index: number;
   onToggle: () => void;
   onEdit: () => void;
 }) {
@@ -368,7 +404,7 @@ function RuleBuilderModal({ rule, onClose }: { rule: Rule | null; onClose: () =>
       { id: 'c1', field: 'tags', operator: 'contains', value: '' },
     ]
   );
-  const [actions, setActions] = useState<RuleAction[]>(
+  const [actions] = useState<RuleAction[]>(
     rule?.actions || [
       { id: 'a1', type: 'apply_template', config: {} },
     ]
