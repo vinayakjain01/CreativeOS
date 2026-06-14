@@ -3,6 +3,9 @@ import type { Rule, RuleCondition, RuleAction } from '../types';
 import { mockRules } from '../data/mockData';
 import type { DataSource } from '../hooks/useAsyncData';
 
+// Re-export Rule type
+export type { Rule };
+
 interface RuleRow {
   id: string;
   rule_type: string;

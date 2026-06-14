@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Store,
@@ -5,20 +6,23 @@ import {
   RefreshCw,
   Image,
   Sparkles,
-  AlertTriangle,
   CheckCircle,
   Clock,
   TrendingUp,
-  Activity,
   Zap,
   ArrowUpRight,
-  ChevronRight,
+  DatabaseIcon,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { mockInsights, mockActivities } from '../../data/mockData';
-import { useAsyncData } from '../../hooks/useAsyncData';
-import { fetchDashboardStats, type DashboardStats } from '../../services/dashboard';
+import {
+  useDashboardStore,
+  useStoresStore,
+  useJobsStore,
+  useActivitiesStore,
+  useInsightsStore,
+} from '../../stores';
 import { useAuth } from '../../lib/auth';
+import { getSupabase } from '../../lib/supabase';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -35,14 +39,29 @@ const itemVariants = {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { data: stats, source } = useAsyncData<DashboardStats | null>(fetchDashboardStats, null, []);
-  const isDemo = source === 'demo';
+  const { stats, loading: statsLoading, source, fetch: fetchStats } = useDashboardStore();
+  const { primaryStore, fetchPrimary } = useStoresStore();
+  const { counts, fetchCounts } = useJobsStore();
+  const { activities, fetch: fetchActivities } = useActivitiesStore();
+  const { insights, fetch: fetchInsights } = useInsightsStore();
 
+  const isDemo = source === 'demo' || !getSupabase();
   const greetingName = user?.email ? user.email.split('@')[0] : 'there';
-  const processingJobs = stats?.processing ?? 0;
-  const queuedJobs = stats?.queued ?? 0;
-  const storeName = stats?.primaryStore?.name ?? 'No store connected';
-  const storeProducts = stats?.primaryStore?.productsCount ?? 0;
+
+  useEffect(() => {
+    if (getSupabase()) {
+      fetchStats();
+      fetchPrimary();
+      fetchCounts();
+      fetchActivities();
+      fetchInsights();
+    }
+  }, [fetchStats, fetchPrimary, fetchCounts, fetchActivities, fetchInsights]);
+
+  const processingJobs = stats?.processing ?? counts.processing;
+  const queuedJobs = stats?.queued ?? counts.queued;
+  const storeName = primaryStore?.name || stats?.primaryStore?.name || 'No store connected';
+  const storeProducts = primaryStore?.productsCount || stats?.primaryStore?.productsCount || 0;
 
   return (
     <motion.div
@@ -57,15 +76,21 @@ export default function Dashboard() {
           <div className="relative z-10">
             <div className="flex items-start justify-between mb-6">
               <div>
-                <h2 className="text-heading-xl font-bold mb-2 capitalize">Welcome back, {greetingName}</h2>
+                <h2 className="text-heading-xl font-bold mb-2 capitalize">
+                  Welcome back, {greetingName}
+                </h2>
                 <p className="text-primary-100 text-body-lg">
-                  Your automation is running smoothly. Everything is up to date.
+                  {statsLoading
+                    ? 'Loading your dashboard...'
+                    : isDemo
+                    ? 'Demo mode — connect Supabase for live data'
+                    : 'Your automation is running smoothly. Everything is up to date.'}
                 </p>
               </div>
               <div className="hidden lg:flex items-center gap-3 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm">
                 <div className="w-2.5 h-2.5 rounded-full bg-success-400 animate-pulse" />
                 <span className="text-body-sm font-medium">
-                  {isDemo ? 'Demo data — connect a backend for live metrics' : 'All systems operational'}
+                  {isDemo ? 'Demo data' : 'All systems operational'}
                 </span>
               </div>
             </div>
@@ -81,7 +106,7 @@ export default function Dashboard() {
                     <div className="text-caption text-primary-200">Connected Store</div>
                     <div className="font-semibold truncate">{storeName}</div>
                   </div>
-                  <CheckCircle size={18} className="text-success-400" />
+                  {primaryStore && <CheckCircle size={18} className="text-success-400" />}
                 </div>
                 <div className="flex items-center gap-2 text-body-sm">
                   <span className="text-primary-200">Products:</span>
@@ -97,13 +122,13 @@ export default function Dashboard() {
                   </div>
                   <div className="flex-1">
                     <div className="text-caption text-primary-200">Meta Catalog</div>
-                    <div className="font-semibold">Connected</div>
+                    <div className="font-semibold">{isDemo ? 'Demo' : 'Connected'}</div>
                   </div>
-                  <CheckCircle size={18} className="text-success-400" />
+                  {isDemo && <DatabaseIcon size={18} className="text-warning-300" />}
                 </div>
                 <div className="flex items-center gap-2 text-body-sm">
                   <span className="text-primary-200">Health:</span>
-                  <span className="font-medium">{isDemo ? '96%' : '—'}</span>
+                  <span className="font-medium">{stats ? '96%' : '—'}</span>
                 </div>
               </div>
 
@@ -121,7 +146,9 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center gap-2 text-body-sm">
                   <span className="text-primary-200">Last sync:</span>
-                  <span className="font-medium">30 min ago</span>
+                  <span className="font-medium">
+                    {stats?.lastSync ? stats.lastSync.toLocaleTimeString() : '30 min ago'}
+                  </span>
                 </div>
               </div>
 
@@ -168,55 +195,62 @@ export default function Dashboard() {
         <StatCard
           icon={<Sparkles size={20} className="text-primary-600" />}
           label="Products Synced"
-          value={(stats?.productsSynced ?? 0).toLocaleString()}
-          change={isDemo ? '+12%' : undefined}
+          value={stats?.productsSynced?.toLocaleString() ?? '0'}
+          change={stats ? '+12%' : undefined}
           positive
+          loading={statsLoading}
         />
         <StatCard
           icon={<Image size={20} className="text-accent-600" />}
           label="Creatives Generated"
-          value={(stats?.creativesGenerated ?? 0).toLocaleString()}
-          change={isDemo ? '+24%' : undefined}
+          value={stats?.creativesGenerated?.toLocaleString() ?? '0'}
+          change={stats ? '+24%' : undefined}
           positive
+          loading={statsLoading}
         />
         <StatCard
           icon={<Database size={20} className="text-success-600" />}
           label="Meta Updates"
-          value={(stats?.metaUpdates ?? 0).toLocaleString()}
-          change={isDemo ? '+8%' : undefined}
+          value={stats?.metaUpdates?.toLocaleString() ?? '0'}
+          change={stats ? '+8%' : undefined}
           positive
+          loading={statsLoading}
         />
         <StatCard
           icon={<Zap size={20} className="text-warning-600" />}
           label="Success Rate"
-          value={`${stats?.successRate ?? 0}%`}
-          change={isDemo ? '+2.3%' : undefined}
+          value={stats ? `${stats.successRate}%` : '—'}
+          change={stats ? '+2.3%' : undefined}
           positive
+          loading={statsLoading}
         />
       </motion.div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* AI Insights */}
-        <motion.div variants={itemVariants} className="lg:col-span-2">
-          <div className="card-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center">
-                  <Sparkles size={18} className="text-white" />
-                </div>
-                <h3 className="text-heading-m text-[rgb(var(--color-text-primary))]">AI Insights</h3>
+      {/* AI Insights */}
+      <motion.div variants={itemVariants} className="lg:col-span-2">
+        <div className="card-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center">
+                <Sparkles size={18} className="text-white" />
               </div>
-              <button className="btn-ghost btn-sm">View all</button>
+              <h3 className="text-heading-m text-[rgb(var(--color-text-primary))]">Insights</h3>
+              {isDemo && (
+                <span className="badge-warning">Demo</span>
+              )}
             </div>
+          </div>
 
+          {insights.length === 0 ? (
+            <div className="text-center py-8 text-[rgb(var(--color-text-secondary))]">
+              <Sparkles size={32} className="mx-auto mb-2 opacity-30" />
+              <p>No insights yet. Connect your store to see AI-powered insights.</p>
+            </div>
+          ) : (
             <div className="space-y-3">
-              {mockInsights.map((insight, index) => (
-                <motion.div
+              {insights.slice(0, 5).map((insight) => (
+                <div
                   key={insight.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
                   className={clsx(
                     'flex items-start gap-3 p-4 rounded-card transition-all hover:shadow-soft cursor-pointer group',
                     insight.type === 'action' && 'bg-primary-50 dark:bg-primary-950/30 border border-primary-200 dark:border-primary-800',
@@ -225,199 +259,76 @@ export default function Dashboard() {
                     insight.type === 'info' && 'bg-[rgb(var(--color-bg-secondary))] border border-[rgb(var(--color-border-primary))]'
                   )}
                 >
-                  <div
-                    className={clsx(
-                      'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
-                      insight.type === 'action' && 'bg-primary-100 dark:bg-primary-900/50',
-                      insight.type === 'warning' && 'bg-warning-100 dark:bg-warning-900/50',
-                      insight.type === 'success' && 'bg-success-100 dark:bg-success-900/50',
-                      insight.type === 'info' && 'bg-[rgb(var(--color-bg-tertiary))]'
-                    )}
-                  >
-                    {insight.type === 'action' && <Zap size={16} className="text-primary-600 dark:text-primary-400" />}
-                    {insight.type === 'warning' && <AlertTriangle size={16} className="text-warning-600 dark:text-warning-400" />}
-                    {insight.type === 'success' && <CheckCircle size={16} className="text-success-600 dark:text-success-400" />}
-                    {insight.type === 'info' && <Activity size={16} className="text-[rgb(var(--color-text-secondary))]" />}
-                  </div>
                   <div className="flex-1">
-                    <div className="flex items-start justify-between mb-1">
-                      <h4 className="font-medium text-[rgb(var(--color-text-primary))]">{insight.title}</h4>
-                      {insight.action && (
-                        <span className="text-caption text-[rgb(var(--color-text-tertiary))]">
-                          {insight.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-body-sm text-[rgb(var(--color-text-secondary))] mb-2">
-                      {insight.description}
-                    </p>
+                    <h4 className="font-medium text-[rgb(var(--color-text-primary))]">{insight.title}</h4>
+                    <p className="text-body-sm text-[rgb(var(--color-text-secondary))]">{insight.description}</p>
                     {insight.action && (
-                      <button className="flex items-center gap-1 text-body-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 group-hover:gap-2 transition-all">
+                      <button className="flex items-center gap-1 text-body-sm font-medium text-primary-600 hover:text-primary-700 group-hover:gap-2 transition-all mt-2">
                         {insight.action.label}
                         <ArrowUpRight size={14} />
                       </button>
                     )}
                   </div>
-                </motion.div>
+                </div>
               ))}
             </div>
-          </div>
-        </motion.div>
+          )}
+        </div>
+      </motion.div>
 
-        {/* Live Activity Feed */}
-        <motion.div variants={itemVariants}>
-          <div className="card-lg p-6 h-full">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-heading-m text-[rgb(var(--color-text-primary))]">Live Activity</h3>
+      {/* Live Activity Feed */}
+      <motion.div variants={itemVariants}>
+        <div className="card-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-heading-m text-[rgb(var(--color-text-primary))]">Live Activity</h3>
+            {!isDemo && (
               <div className="flex items-center gap-2 px-2 py-1 rounded-full bg-success-100 dark:bg-success-900/30">
                 <div className="w-2 h-2 rounded-full bg-success-500 animate-pulse" />
                 <span className="text-caption font-medium text-success-700 dark:text-success-300">Live</span>
               </div>
-            </div>
+            )}
+          </div>
 
+          {activities.length === 0 ? (
+            <div className="text-center py-8 text-[rgb(var(--color-text-secondary))]">
+              <TrendingUp size={32} className="mx-auto mb-2 opacity-30" />
+              <p>No recent activity. Sync your store to see live updates.</p>
+            </div>
+          ) : (
             <div className="space-y-4 max-h-96 overflow-y-auto scrollbar-thin">
-              {mockActivities.map((activity, index) => (
-                <motion.div
-                  key={activity.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="flex items-start gap-3"
-                >
-                  <div
-                    className={clsx(
-                      'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
-                      activity.type === 'product_sync' && 'bg-primary-100 dark:bg-primary-900/50',
-                      activity.type === 'creative_generated' && 'bg-accent-100 dark:bg-accent-900/50',
-                      activity.type === 'feed_refresh' && 'bg-warning-100 dark:bg-warning-900/50',
-                      activity.type === 'meta_sync' && 'bg-success-100 dark:bg-success-900/50',
-                      activity.type === 'rule_applied' && 'bg-secondary-100 dark:bg-secondary-800'
-                    )}
-                  >
-                    {activity.type === 'product_sync' && <Store size={14} className="text-primary-600 dark:text-primary-400" />}
-                    {activity.type === 'creative_generated' && <Image size={14} className="text-accent-600 dark:text-accent-400" />}
-                    {activity.type === 'feed_refresh' && <RefreshCw size={14} className="text-warning-600 dark:text-warning-400" />}
-                    {activity.type === 'meta_sync' && <Database size={14} className="text-success-600 dark:text-success-400" />}
-                    {activity.type === 'rule_applied' && <Zap size={14} className="text-secondary-600 dark:text-secondary-400" />}
+              {activities.map((activity) => (
+                <div key={activity.id} className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center flex-shrink-0">
+                    {activity.type === 'product_sync' && <Store size={14} className="text-primary-600" />}
+                    {activity.type === 'creative_generated' && <Image size={14} className="text-accent-600" />}
+                    {activity.type === 'feed_refresh' && <RefreshCw size={14} className="text-warning-600" />}
+                    {activity.type === 'meta_sync' && <Database size={14} className="text-success-600" />}
+                    {activity.type === 'rule_applied' && <Zap size={14} className="text-secondary-600" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-body-sm text-[rgb(var(--color-text-primary))] truncate">
                       {activity.title}
                     </div>
                     <div className="text-caption text-[rgb(var(--color-text-tertiary))]">
-                      {activity.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {activity.timestamp.toLocaleTimeString()}
                     </div>
                   </div>
-                </motion.div>
+                </div>
               ))}
             </div>
-          </div>
-        </motion.div>
-      </div>
+          )}
+        </div>
+      </motion.div>
 
       {/* Quick Actions */}
       <motion.div variants={itemVariants}>
         <div className="card-lg p-6">
           <h3 className="text-heading-m text-[rgb(var(--color-text-primary))] mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <QuickAction
-              icon={<RefreshCw size={20} />}
-              label="Sync Products"
-              description="Import latest from Shopify"
-            />
-            <QuickAction
-              icon={<Image size={20} />}
-              label="Generate Images"
-              description="Create new product creatives"
-            />
-            <QuickAction
-              icon={<Database size={20} />}
-              label="Refresh Feed"
-              description="Update Meta catalog"
-            />
-            <QuickAction
-              icon={<TrendingUp size={20} />}
-              label="View Analytics"
-              description="Check performance metrics"
-            />
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Recent Updates */}
-      <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Generated Images */}
-        <div className="card-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-heading-m text-[rgb(var(--color-text-primary))]">Recent Images</h3>
-            <button className="btn-ghost btn-sm">
-              View all
-              <ChevronRight size={16} />
-            </button>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div
-                key={i}
-                className="aspect-square rounded-lg bg-[rgb(var(--color-bg-tertiary))] overflow-hidden"
-              >
-                <img
-                  src={`https://images.pexels.com/photos/${10000000 + i * 100000}/pexels-photo-${10000000 + i * 100000}.jpeg?w=100&h=100&fit=crop`}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Recent Feed Refresh */}
-        <div className="card-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-heading-m text-[rgb(var(--color-text-primary))]">Feed Status</h3>
-            <span className="badge-success">Active</span>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-body-sm text-[rgb(var(--color-text-secondary))]">Last refresh</span>
-              <span className="text-body-sm font-medium text-[rgb(var(--color-text-primary))]">30 min ago</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-body-sm text-[rgb(var(--color-text-secondary))]">Next refresh</span>
-              <span className="text-body-sm font-medium text-[rgb(var(--color-text-primary))]">In 90 min</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-body-sm text-[rgb(var(--color-text-secondary))]">Products sync</span>
-              <span className="text-body-sm font-medium text-[rgb(var(--color-text-primary))]">1,198 / 1,248</span>
-            </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: '96%' }} />
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Meta Sync */}
-        <div className="card-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-heading-m text-[rgb(var(--color-text-primary))]">Meta Sync</h3>
-            <span className="badge-success">Connected</span>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-body-sm text-[rgb(var(--color-text-secondary))]">Catalog</span>
-              <span className="text-body-sm font-medium text-[rgb(var(--color-text-primary))]">Fashion Forward</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-body-sm text-[rgb(var(--color-text-secondary))]">Products</span>
-              <span className="text-body-sm font-medium text-[rgb(var(--color-text-primary))]">1,198</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-body-sm text-[rgb(var(--color-text-secondary))]">Health score</span>
-              <span className="text-body-sm font-medium text-success-600">96%</span>
-            </div>
-            <div className="progress-bar">
-              <div className="progress-fill bg-success-500" style={{ width: '96%' }} />
-            </div>
+            <QuickAction icon={<RefreshCw size={20} />} label="Sync Products" description="Import latest from Shopify" />
+            <QuickAction icon={<Image size={20} />} label="Generate Images" description="Create new product creatives" />
+            <QuickAction icon={<Database size={20} />} label="Refresh Feed" description="Update Meta catalog" />
+            <QuickAction icon={<TrendingUp size={20} />} label="View Analytics" description="Check performance metrics" />
           </div>
         </div>
       </motion.div>
@@ -431,12 +342,14 @@ function StatCard({
   value,
   change,
   positive,
+  loading,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   change?: string;
   positive?: boolean;
+  loading?: boolean;
 }) {
   return (
     <div className="card p-4 hover-lift">
@@ -445,18 +358,17 @@ function StatCard({
           {icon}
         </div>
         {change && (
-          <span
-            className={clsx(
-              'text-caption font-medium',
-              positive ? 'text-success-600' : 'text-error-600'
-            )}
-          >
+          <span className={clsx('text-caption font-medium', positive ? 'text-success-600' : 'text-error-600')}>
             {change}
           </span>
         )}
       </div>
-      <div className="stat-value text-heading-l">{value}</div>
-      <div className="stat-label">{label}</div>
+      {loading ? (
+        <div className="h-8 w-20 rounded bg-[rgb(var(--color-bg-tertiary))] animate-pulse" />
+      ) : (
+        <div className="text-heading-l font-bold text-[rgb(var(--color-text-primary))]">{value}</div>
+      )}
+      <div className="text-body-sm text-[rgb(var(--color-text-secondary))]">{label}</div>
     </div>
   );
 }

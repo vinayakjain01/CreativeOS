@@ -2,6 +2,10 @@ import { getSupabase } from '../lib/supabase';
 import type { Template, TemplateCategory } from '../types';
 import { mockTemplates } from '../data/mockData';
 import type { DataSource } from '../hooks/useAsyncData';
+import { templatesRepo } from '../repositories';
+
+// Re-export Template type
+export type { Template };
 
 // Neutral inline placeholder for templates without a rendered thumbnail yet.
 const PLACEHOLDER_THUMB =
