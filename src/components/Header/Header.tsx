@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useTheme } from '../../hooks/useTheme';
+import { useAuth } from '../../lib/auth';
 
 interface HeaderProps {
   title: string;
@@ -24,9 +25,14 @@ interface HeaderProps {
 
 export default function Header({ title, subtitle }: HeaderProps) {
   const { resolvedTheme, setTheme } = useTheme();
+  const { user, configured, signOut } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+
+  const email = user?.email ?? (configured ? 'Account' : 'demo@creativeos.io');
+  const displayName = email.split('@')[0];
+  const initials = displayName.slice(0, 2).toUpperCase();
 
   const notifications = [
     { id: '1', title: '32 products need creative updates', time: '2 hours ago', unread: true },
@@ -165,11 +171,11 @@ export default function Header({ title, subtitle }: HeaderProps) {
               className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[rgb(var(--color-bg-hover))] transition-colors"
             >
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center">
-                <span className="text-white text-body-sm font-medium">JD</span>
+                <span className="text-white text-body-sm font-medium">{initials}</span>
               </div>
               <div className="hidden md:block text-left">
-                <div className="text-body-sm font-medium text-[rgb(var(--color-text-primary))]">John Doe</div>
-                <div className="text-caption text-[rgb(var(--color-text-tertiary))]">Admin</div>
+                <div className="text-body-sm font-medium text-[rgb(var(--color-text-primary))]">{displayName}</div>
+                <div className="text-caption text-[rgb(var(--color-text-tertiary))]">{configured ? 'Member' : 'Demo'}</div>
               </div>
               <ChevronDown size={16} className="text-[rgb(var(--color-text-tertiary))]" />
             </button>
@@ -186,10 +192,10 @@ export default function Header({ title, subtitle }: HeaderProps) {
                   >
                     <div className="px-4 py-3 border-b border-[rgb(var(--color-border-primary))]">
                       <div className="text-body-md font-medium text-[rgb(var(--color-text-primary))]">
-                        John Doe
+                        {displayName}
                       </div>
                       <div className="text-body-sm text-[rgb(var(--color-text-secondary))]">
-                        john@fashionforward.com
+                        {email}
                       </div>
                     </div>
                     <div className="py-1">
@@ -207,7 +213,12 @@ export default function Header({ title, subtitle }: HeaderProps) {
                       </button>
                     </div>
                     <div className="border-t border-[rgb(var(--color-border-primary))] py-1">
-                      <button className="dropdown-item w-full text-error-600">
+                      <button
+                        className="dropdown-item w-full text-error-600 disabled:opacity-50"
+                        onClick={() => signOut()}
+                        disabled={!configured}
+                        title={configured ? 'Sign out' : 'Demo mode — no session'}
+                      >
                         <LogOut size={16} />
                         <span>Sign out</span>
                       </button>

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { ThemeProvider } from './hooks/useTheme';
 import Sidebar from './components/Sidebar/Sidebar';
 import Header from './components/Header/Header';
 import Dashboard from './pages/Dashboard/Dashboard';
@@ -14,6 +13,8 @@ import Analytics from './pages/Analytics/Analytics';
 import Settings from './pages/Settings/Settings';
 import Admin from './pages/Admin/Admin';
 import Onboarding from './components/Onboarding/Onboarding';
+import SignIn from './components/Auth/SignIn';
+import { useAuth } from './lib/auth';
 
 const pageTitles: Record<string, { title: string; subtitle: string }> = {
   dashboard: { title: 'Dashboard', subtitle: 'Overview of your automation and performance' },
@@ -31,6 +32,7 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
 };
 
 function App() {
+  const { configured, loading: authLoading, user } = useAuth();
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -84,7 +86,7 @@ function App() {
     }
   };
 
-  if (!isLoaded) {
+  if (!isLoaded || authLoading) {
     return (
       <div className="min-h-screen bg-[rgb(var(--color-bg-secondary))] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
@@ -92,46 +94,46 @@ function App() {
     );
   }
 
+  // Auth gate: when a backend is configured, require a session before the app
+  // (so RLS-protected queries return rows). In demo mode (unconfigured), skip.
+  if (configured && !user) {
+    return <SignIn />;
+  }
+
   if (showOnboarding) {
-    return (
-      <ThemeProvider>
-        <Onboarding onComplete={handleOnboardingComplete} />
-      </ThemeProvider>
-    );
+    return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
   const pageInfo = pageTitles[currentPage] || pageTitles.dashboard;
 
   return (
-    <ThemeProvider>
-      <div className="min-h-screen bg-[rgb(var(--color-bg-secondary))] flex">
-        {/* Sidebar */}
-        <Sidebar
-          currentPage={currentPage}
-          onNavigate={handleNavigate}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        />
+    <div className="min-h-screen bg-[rgb(var(--color-bg-secondary))] flex">
+      {/* Sidebar */}
+      <Sidebar
+        currentPage={currentPage}
+        onNavigate={handleNavigate}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
 
-        {/* Main Content */}
-        <div
-          className="flex-1 flex flex-col transition-all duration-200"
-          style={{
-            marginLeft: sidebarCollapsed ? 72 : 280,
-          }}
-        >
-          {/* Header */}
-          <Header title={pageInfo.title} subtitle={pageInfo.subtitle} />
+      {/* Main Content */}
+      <div
+        className="flex-1 flex flex-col transition-all duration-200"
+        style={{
+          marginLeft: sidebarCollapsed ? 72 : 280,
+        }}
+      >
+        {/* Header */}
+        <Header title={pageInfo.title} subtitle={pageInfo.subtitle} />
 
-          {/* Page Content */}
-          <main className="flex-1 overflow-auto">
-            <AnimatePresence mode="wait">
-              {renderPage()}
-            </AnimatePresence>
-          </main>
-        </div>
+        {/* Page Content */}
+        <main className="flex-1 overflow-auto">
+          <AnimatePresence mode="wait">
+            {renderPage()}
+          </AnimatePresence>
+        </main>
       </div>
-    </ThemeProvider>
+    </div>
   );
 }
 

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Settings as SettingsIcon,
   Store,
   Bell,
   Link,
@@ -13,10 +12,14 @@ import {
   Check,
   ChevronRight,
   ExternalLink,
+  RefreshCw,
+  Database,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useTheme } from '../../hooks/useTheme';
 import { mockStores, mockMetaCatalog } from '../../data/mockData';
+import { useAsyncData } from '../../hooks/useAsyncData';
+import { fetchStores } from '../../services/stores';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -32,8 +35,11 @@ const itemVariants = {
 };
 
 export default function Settings() {
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('store');
+
+  const { data: stores, loading, error, source, refetch } = useAsyncData(fetchStores, mockStores, []);
+  const isDemo = source === 'demo';
 
   const sections = [
     { id: 'store', label: 'Store Settings', icon: <Store size={20} /> },
@@ -42,8 +48,6 @@ export default function Settings() {
     { id: 'notifications', label: 'Notifications', icon: <Bell size={20} /> },
     { id: 'security', label: 'Security', icon: <Shield size={20} /> },
   ];
-
-  const store = mockStores[0];
 
   return (
     <motion.div
@@ -87,35 +91,80 @@ export default function Settings() {
         <motion.div variants={itemVariants} className="flex-1">
           {activeSection === 'store' && (
             <div className="card-lg p-6">
-              <h2 className="text-heading-m text-[rgb(var(--color-text-primary))] mb-6">
-                Store Settings
-              </h2>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-heading-m text-[rgb(var(--color-text-primary))]">
+                    Store Settings
+                  </h2>
+                  {isDemo && (
+                    <span className="badge-warning inline-flex items-center gap-1" title="Set Supabase env vars to load live stores">
+                      <Database size={12} />
+                      Demo data
+                    </span>
+                  )}
+                </div>
+                <button className="btn-ghost btn-sm" onClick={refetch} disabled={loading}>
+                  <RefreshCw size={16} className={clsx(loading && 'animate-spin')} />
+                  Refresh
+                </button>
+              </div>
 
               <div className="space-y-6">
-                {/* Connected Store */}
-                <div className="p-4 rounded-card-lg bg-[rgb(var(--color-bg-secondary))] border border-[rgb(var(--color-border-primary))]">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-lg bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center">
-                        <Store size={24} className="text-primary-600" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-[rgb(var(--color-text-primary))]">{store.name}</h3>
-                        <p className="text-body-sm text-[rgb(var(--color-text-secondary))]">
-                          {store.domain}
-                        </p>
-                      </div>
+                {/* Connected Stores */}
+                {error && (
+                  <div className="p-3 rounded-lg bg-error-50 dark:bg-error-950/30 border border-error-200 dark:border-error-800 text-body-sm text-[rgb(var(--color-text-primary))]">
+                    {error} — showing sample data instead.
+                  </div>
+                )}
+
+                {loading && stores.length === 0 && (
+                  <div className="h-20 rounded-card-lg bg-[rgb(var(--color-bg-tertiary))] animate-pulse" />
+                )}
+
+                {!loading && stores.length === 0 && (
+                  <div className="p-6 rounded-card-lg border border-dashed border-[rgb(var(--color-border-primary))] text-center">
+                    <div className="font-medium text-[rgb(var(--color-text-primary))]">No stores connected</div>
+                    <div className="text-body-sm text-[rgb(var(--color-text-secondary))]">
+                      Connect a Shopify store to start syncing products.
                     </div>
-                    <span className="badge-success">Connected</span>
                   </div>
-                  <div className="flex gap-3">
-                    <button className="btn-secondary btn-sm">
-                      <ExternalLink size={16} />
-                      Open in Shopify
-                    </button>
-                    <button className="btn-ghost btn-sm text-error-600">Disconnect</button>
+                )}
+
+                {stores.map((store) => (
+                  <div
+                    key={store.id}
+                    className="p-4 rounded-card-lg bg-[rgb(var(--color-bg-secondary))] border border-[rgb(var(--color-border-primary))]"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-lg bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center">
+                          <Store size={24} className="text-primary-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-[rgb(var(--color-text-primary))]">{store.name}</h3>
+                          <p className="text-body-sm text-[rgb(var(--color-text-secondary))]">
+                            {store.domain} · {store.productsCount.toLocaleString()} products
+                          </p>
+                        </div>
+                      </div>
+                      <span className={clsx(store.status === 'connected' ? 'badge-success' : 'badge-secondary')}>
+                        {store.status === 'connected' ? 'Connected' : 'Disconnected'}
+                      </span>
+                    </div>
+                    <div className="flex gap-3">
+                      <a
+                        className="btn-secondary btn-sm"
+                        href={`https://${store.domain}/admin`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <ExternalLink size={16} />
+                        Open in Shopify
+                      </a>
+                      <button className="btn-ghost btn-sm text-error-600">Disconnect</button>
+                    </div>
                   </div>
-                </div>
+                ))}
 
                 {/* Sync Settings */}
                 <div>
