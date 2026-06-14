@@ -27,6 +27,7 @@ import {
 import { clsx } from 'clsx';
 import { mockProducts } from '../../data/mockData';
 import { fetchProducts } from '../../services/products';
+import { enqueueForProducts } from '../../services/jobs';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import type { Product } from '../../types';
 
@@ -64,6 +65,32 @@ export default function Products() {
   } = useAsyncData(fetchProducts, mockProducts, []);
 
   const isDemo = source === 'demo';
+
+  const [generating, setGenerating] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const notify = (type: 'success' | 'error', msg: string) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const runGenerate = async (items: Product[]) => {
+    if (items.length === 0) return;
+    if (isDemo) {
+      notify('error', 'Connect a backend (Supabase + API URL) to generate.');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const { enqueued } = await enqueueForProducts(items);
+      notify('success', `Queued ${enqueued} generation${enqueued === 1 ? '' : 's'}.`);
+      setSelectedProducts([]);
+      setTimeout(refetch, 1200);
+    } catch (e) {
+      notify('error', e instanceof Error ? e.message : 'Failed to queue generation');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const filters = [
     { id: 'all', label: 'All Products', count: products.length },
@@ -181,6 +208,25 @@ export default function Products() {
       animate="show"
       className="p-6"
     >
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            className={clsx(
+              'fixed bottom-6 right-6 z-50 px-4 py-3 rounded-card-lg shadow-soft-lg border text-body-sm font-medium',
+              toast.type === 'success'
+                ? 'bg-success-50 dark:bg-success-950/40 border-success-200 dark:border-success-800 text-success-700 dark:text-success-300'
+                : 'bg-error-50 dark:bg-error-950/40 border-error-200 dark:border-error-800 text-error-700 dark:text-error-300',
+            )}
+          >
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <motion.div variants={itemVariants} className="flex items-center justify-between mb-6">
         <div>
@@ -204,9 +250,13 @@ export default function Products() {
             <RefreshCw size={18} className={clsx(loading && 'animate-spin')} />
             {loading ? 'Refreshing…' : 'Sync Products'}
           </button>
-          <button className="btn-primary btn-md">
-            <Sparkles size={18} />
-            Generate Images
+          <button
+            className="btn-primary btn-md"
+            onClick={() => runGenerate(sortedProducts)}
+            disabled={generating || sortedProducts.length === 0}
+          >
+            <Sparkles size={18} className={clsx(generating && 'animate-pulse')} />
+            {generating ? 'Queuing…' : 'Generate Images'}
           </button>
         </div>
       </motion.div>
@@ -367,7 +417,11 @@ export default function Products() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <button className="btn-secondary btn-sm">
+                <button
+                  className="btn-secondary btn-sm"
+                  onClick={() => runGenerate(products.filter((p) => selectedProducts.includes(p.id)))}
+                  disabled={generating}
+                >
                   <Image size={16} />
                   Generate Images
                 </button>
@@ -590,7 +644,13 @@ export default function Products() {
                               exit={{ opacity: 0, scale: 0.95 }}
                               className="dropdown right-0 z-50"
                             >
-                              <button className="dropdown-item w-full">
+                              <button
+                                className="dropdown-item w-full"
+                                onClick={() => {
+                                  setShowActions(null);
+                                  runGenerate([product]);
+                                }}
+                              >
                                 <Image size={16} />
                                 Generate Creative
                               </button>

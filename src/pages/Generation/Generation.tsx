@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Image,
   RefreshCw,
@@ -19,7 +19,8 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { mockGenerationJobs } from '../../data/mockData';
-import { fetchJobs } from '../../services/jobs';
+import { fetchJobs, enqueueAllForStores } from '../../services/jobs';
+import { fetchStores } from '../../services/stores';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import type { GenerationJob } from '../../types';
 
@@ -41,6 +42,32 @@ export default function Generation() {
 
   const { data: jobs, loading, source, refetch } = useAsyncData(fetchJobs, mockGenerationJobs, []);
   const isDemo = source === 'demo';
+
+  const [starting, setStarting] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const notify = (type: 'success' | 'error', msg: string) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleStart = async () => {
+    if (isDemo) {
+      notify('error', 'Connect a backend (Supabase + API URL) to generate.');
+      return;
+    }
+    setStarting(true);
+    try {
+      const { data: stores } = await fetchStores();
+      const ids = stores.map((s) => s.id);
+      const { enqueued } = await enqueueAllForStores(ids);
+      notify('success', `Queued ${enqueued} generation${enqueued === 1 ? '' : 's'} across ${ids.length} store${ids.length === 1 ? '' : 's'}.`);
+      setTimeout(refetch, 1200);
+    } catch (e) {
+      notify('error', e instanceof Error ? e.message : 'Failed to start generation');
+    } finally {
+      setStarting(false);
+    }
+  };
 
   const stats = {
     processing: jobs.filter((j) => j.status === 'processing').length,
@@ -64,6 +91,25 @@ export default function Generation() {
       animate="show"
       className="p-6"
     >
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            className={clsx(
+              'fixed bottom-6 right-6 z-50 px-4 py-3 rounded-card-lg shadow-soft-lg border text-body-sm font-medium',
+              toast.type === 'success'
+                ? 'bg-success-50 dark:bg-success-950/40 border-success-200 dark:border-success-800 text-success-700 dark:text-success-300'
+                : 'bg-error-50 dark:bg-error-950/40 border-error-200 dark:border-error-800 text-error-700 dark:text-error-300',
+            )}
+          >
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <motion.div variants={itemVariants} className="flex items-center justify-between mb-6">
         <div>
@@ -89,9 +135,9 @@ export default function Generation() {
             <Settings size={18} />
             Settings
           </button>
-          <button className="btn-primary btn-md">
-            <PlayIcon size={18} />
-            Start Generation
+          <button className="btn-primary btn-md" onClick={handleStart} disabled={starting}>
+            <PlayIcon size={18} className={clsx(starting && 'animate-pulse')} />
+            {starting ? 'Starting…' : 'Start Generation'}
           </button>
         </div>
       </motion.div>

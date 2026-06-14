@@ -6,6 +6,7 @@ import type { DataSource } from '../hooks/useAsyncData';
 // Rows as returned by the joined Supabase query below.
 interface ProductWithRelations {
   id: string;
+  store_id: string;
   shopify_id: string;
   title: string;
   handle: string;
@@ -21,7 +22,7 @@ interface ProductWithRelations {
 }
 
 const PRODUCT_SELECT = `
-  id, shopify_id, title, handle, vendor, product_type, tags,
+  id, store_id, shopify_id, title, handle, vendor, product_type, tags,
   price, compare_at_price, status, updated_at,
   product_images ( src, is_primary, position ),
   generated_images ( status, updated_at )
@@ -83,6 +84,7 @@ function mapProduct(row: ProductWithRelations): Product {
   const creativeStatus = deriveCreativeStatus(row.generated_images);
   return {
     id: row.id,
+    storeId: row.store_id,
     sku: row.shopify_id, // schema has no SKU column; Shopify product id stands in
     name: row.title,
     image: pickPrimaryImage(row.product_images),

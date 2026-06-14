@@ -23,6 +23,8 @@ export interface Product {
   tags: string[];
   collection: string;
   lastUpdated: Date;
+  /** Owning store id (present on live data; used to target generation). */
+  storeId?: string;
 }
 
 export interface Template {

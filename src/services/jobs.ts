@@ -69,3 +69,38 @@ export async function enqueueGeneration(
 ): Promise<{ enqueued: number; mode: 'queue' | 'inline' }> {
   return apiPost('/api/generate/queue', opts);
 }
+
+/**
+ * Enqueue generation for a set of products, grouped by their owning store
+ * (the backend endpoint is per-store). Returns the total number enqueued.
+ */
+export async function enqueueForProducts(
+  products: { id: string; storeId?: string }[],
+): Promise<{ enqueued: number }> {
+  const byStore = new Map<string, string[]>();
+  for (const p of products) {
+    if (!p.storeId) continue;
+    const list = byStore.get(p.storeId) ?? [];
+    list.push(p.id);
+    byStore.set(p.storeId, list);
+  }
+  if (byStore.size === 0) throw new Error('No store associated with these products');
+
+  let enqueued = 0;
+  for (const [storeId, productIds] of byStore) {
+    const res = await enqueueGeneration({ storeId, productIds });
+    enqueued += res.enqueued;
+  }
+  return { enqueued };
+}
+
+/** Enqueue generation for every active product across the given stores. */
+export async function enqueueAllForStores(storeIds: string[]): Promise<{ enqueued: number }> {
+  if (storeIds.length === 0) throw new Error('No stores connected');
+  let enqueued = 0;
+  for (const storeId of storeIds) {
+    const res = await enqueueGeneration({ storeId, filter: { type: 'all' } });
+    enqueued += res.enqueued;
+  }
+  return { enqueued };
+}
