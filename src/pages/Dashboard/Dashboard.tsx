@@ -15,7 +15,10 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { mockStores, mockMetaCatalog, mockInsights, mockActivities, mockGenerationJobs, mockAnalytics } from '../../data/mockData';
+import { mockInsights, mockActivities } from '../../data/mockData';
+import { useAsyncData } from '../../hooks/useAsyncData';
+import { fetchDashboardStats, type DashboardStats } from '../../services/dashboard';
+import { useAuth } from '../../lib/auth';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -31,10 +34,15 @@ const itemVariants = {
 };
 
 export default function Dashboard() {
-  const store = mockStores[0];
-  const processingJobs = mockGenerationJobs.filter((j) => j.status === 'processing').length;
-  const queuedJobs = mockGenerationJobs.filter((j) => j.status === 'queued').length;
-  const failedJobs = mockGenerationJobs.filter((j) => j.status === 'failed').length;
+  const { user } = useAuth();
+  const { data: stats, source } = useAsyncData<DashboardStats | null>(fetchDashboardStats, null, []);
+  const isDemo = source === 'demo';
+
+  const greetingName = user?.email ? user.email.split('@')[0] : 'there';
+  const processingJobs = stats?.processing ?? 0;
+  const queuedJobs = stats?.queued ?? 0;
+  const storeName = stats?.primaryStore?.name ?? 'No store connected';
+  const storeProducts = stats?.primaryStore?.productsCount ?? 0;
 
   return (
     <motion.div
@@ -49,14 +57,16 @@ export default function Dashboard() {
           <div className="relative z-10">
             <div className="flex items-start justify-between mb-6">
               <div>
-                <h2 className="text-heading-xl font-bold mb-2">Welcome back, John</h2>
+                <h2 className="text-heading-xl font-bold mb-2 capitalize">Welcome back, {greetingName}</h2>
                 <p className="text-primary-100 text-body-lg">
                   Your automation is running smoothly. Everything is up to date.
                 </p>
               </div>
               <div className="hidden lg:flex items-center gap-3 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm">
                 <div className="w-2.5 h-2.5 rounded-full bg-success-400 animate-pulse" />
-                <span className="text-body-sm font-medium">All systems operational</span>
+                <span className="text-body-sm font-medium">
+                  {isDemo ? 'Demo data — connect a backend for live metrics' : 'All systems operational'}
+                </span>
               </div>
             </div>
 
@@ -69,13 +79,13 @@ export default function Dashboard() {
                   </div>
                   <div className="flex-1">
                     <div className="text-caption text-primary-200">Connected Store</div>
-                    <div className="font-semibold truncate">{store.name}</div>
+                    <div className="font-semibold truncate">{storeName}</div>
                   </div>
                   <CheckCircle size={18} className="text-success-400" />
                 </div>
                 <div className="flex items-center gap-2 text-body-sm">
                   <span className="text-primary-200">Products:</span>
-                  <span className="font-medium">{store.productsCount.toLocaleString()}</span>
+                  <span className="font-medium">{storeProducts.toLocaleString()}</span>
                 </div>
               </div>
 
@@ -93,7 +103,7 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center gap-2 text-body-sm">
                   <span className="text-primary-200">Health:</span>
-                  <span className="font-medium">{mockMetaCatalog.healthScore}%</span>
+                  <span className="font-medium">{isDemo ? '96%' : '—'}</span>
                 </div>
               </div>
 
@@ -158,29 +168,29 @@ export default function Dashboard() {
         <StatCard
           icon={<Sparkles size={20} className="text-primary-600" />}
           label="Products Synced"
-          value={mockAnalytics.productsSynced.toLocaleString()}
-          change="+12%"
+          value={(stats?.productsSynced ?? 0).toLocaleString()}
+          change={isDemo ? '+12%' : undefined}
           positive
         />
         <StatCard
           icon={<Image size={20} className="text-accent-600" />}
           label="Creatives Generated"
-          value={mockAnalytics.creativesGenerated.toLocaleString()}
-          change="+24%"
+          value={(stats?.creativesGenerated ?? 0).toLocaleString()}
+          change={isDemo ? '+24%' : undefined}
           positive
         />
         <StatCard
           icon={<Database size={20} className="text-success-600" />}
           label="Meta Updates"
-          value={mockAnalytics.metaUpdates.toLocaleString()}
-          change="+8%"
+          value={(stats?.metaUpdates ?? 0).toLocaleString()}
+          change={isDemo ? '+8%' : undefined}
           positive
         />
         <StatCard
           icon={<Zap size={20} className="text-warning-600" />}
           label="Success Rate"
-          value={`${mockAnalytics.automationSuccessRate}%`}
-          change="+2.3%"
+          value={`${stats?.successRate ?? 0}%`}
+          change={isDemo ? '+2.3%' : undefined}
           positive
         />
       </motion.div>
