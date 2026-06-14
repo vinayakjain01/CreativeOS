@@ -14,12 +14,15 @@ import {
   ExternalLink,
   RefreshCw,
   Database,
+  Plus,
+  ArrowRight,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useTheme } from '../../hooks/useTheme';
 import { mockStores, mockMetaCatalog } from '../../data/mockData';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { fetchStores } from '../../services/stores';
+import { apiUrl } from '../../lib/api';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -37,9 +40,27 @@ const itemVariants = {
 export default function Settings() {
   const { theme, setTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('store');
+  const [shopDomain, setShopDomain] = useState('');
+  const [connectError, setConnectError] = useState('');
 
   const { data: stores, loading, error, source, refetch } = useAsyncData(fetchStores, mockStores, []);
   const isDemo = source === 'demo';
+
+  // Shopify OAuth begins on the CatalogStudio backend; we just redirect to it.
+  const handleConnectShopify = () => {
+    setConnectError('');
+    let domain = shopDomain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+    if (domain && !domain.includes('.')) domain = `${domain}.myshopify.com`;
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(domain)) {
+      setConnectError('Enter a valid Shopify domain, e.g. yourstore.myshopify.com');
+      return;
+    }
+    window.location.href = apiUrl(`/api/shopify/install?shop=${encodeURIComponent(domain)}`);
+  };
+
+  const handleConnectMeta = () => {
+    window.location.href = apiUrl('/api/meta/connect');
+  };
 
   const sections = [
     { id: 'store', label: 'Store Settings', icon: <Store size={20} /> },
@@ -110,6 +131,32 @@ export default function Settings() {
               </div>
 
               <div className="space-y-6">
+                {/* Connect a new Shopify store */}
+                <div className="p-4 rounded-card-lg border border-dashed border-[rgb(var(--color-border-primary))]">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Plus size={18} className="text-primary-600" />
+                    <h3 className="font-semibold text-[rgb(var(--color-text-primary))]">Connect a Shopify store</h3>
+                  </div>
+                  <p className="text-body-sm text-[rgb(var(--color-text-secondary))] mb-3">
+                    You'll be redirected to Shopify to approve access. No manual tokens needed.
+                  </p>
+                  {connectError && <p className="text-body-sm text-error-600 mb-2">{connectError}</p>}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="yourstore.myshopify.com"
+                      value={shopDomain}
+                      onChange={(e) => setShopDomain(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleConnectShopify()}
+                      className="input flex-1"
+                    />
+                    <button className="btn-primary btn-md" onClick={handleConnectShopify} disabled={!shopDomain.trim()}>
+                      Connect
+                      <ArrowRight size={16} />
+                    </button>
+                  </div>
+                </div>
+
                 {/* Connected Stores */}
                 {error && (
                   <div className="p-3 rounded-lg bg-error-50 dark:bg-error-950/30 border border-error-200 dark:border-error-800 text-body-sm text-[rgb(var(--color-text-primary))]">
@@ -280,11 +327,14 @@ export default function Settings() {
                     <span className="badge-success">Connected</span>
                   </div>
                   <div className="flex gap-3">
+                    <button className="btn-primary btn-sm" onClick={handleConnectMeta}>
+                      <Link size={16} />
+                      Connect Meta
+                    </button>
                     <button className="btn-secondary btn-sm">
                       <ExternalLink size={16} />
                       Open Business Manager
                     </button>
-                    <button className="btn-ghost btn-sm text-error-600">Reconnect</button>
                   </div>
                 </div>
 

@@ -8,19 +8,20 @@ import {
   XCircle,
   AlertTriangle,
   Activity,
-  Zap,
   PlayIcon,
-  Pause,
   Settings,
   TrendingUp,
   Cpu,
   HardDrive,
-  Wifi,
   MoreVertical,
   RefreshCcw,
+  Database,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { mockGenerationJobs } from '../../data/mockData';
+import { fetchJobs } from '../../services/jobs';
+import { useAsyncData } from '../../hooks/useAsyncData';
+import type { GenerationJob } from '../../types';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -38,14 +39,20 @@ const itemVariants = {
 export default function Generation() {
   const [activeTab, setActiveTab] = useState<'all' | 'processing' | 'queued' | 'completed' | 'failed'>('all');
 
+  const { data: jobs, loading, source, refetch } = useAsyncData(fetchJobs, mockGenerationJobs, []);
+  const isDemo = source === 'demo';
+
   const stats = {
-    processing: mockGenerationJobs.filter((j) => j.status === 'processing').length,
-    queued: mockGenerationJobs.filter((j) => j.status === 'queued').length,
-    completed: mockGenerationJobs.filter((j) => j.status === 'completed').length,
-    failed: mockGenerationJobs.filter((j) => j.status === 'failed').length,
+    processing: jobs.filter((j) => j.status === 'processing').length,
+    queued: jobs.filter((j) => j.status === 'queued').length,
+    completed: jobs.filter((j) => j.status === 'completed').length,
+    failed: jobs.filter((j) => j.status === 'failed').length,
   };
 
-  const filteredJobs = mockGenerationJobs.filter((job) => {
+  const terminal = stats.completed + stats.failed;
+  const successRate = terminal > 0 ? Math.round((stats.completed / terminal) * 1000) / 10 : 100;
+
+  const filteredJobs = jobs.filter((job) => {
     if (activeTab === 'all') return true;
     return job.status === activeTab;
   });
@@ -60,12 +67,24 @@ export default function Generation() {
       {/* Header */}
       <motion.div variants={itemVariants} className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-heading-xl text-[rgb(var(--color-text-primary))]">Image Generation Center</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-heading-xl text-[rgb(var(--color-text-primary))]">Image Generation Center</h1>
+            {isDemo && (
+              <span className="badge-warning inline-flex items-center gap-1" title="Set Supabase env vars to load live jobs">
+                <Database size={12} />
+                Demo data
+              </span>
+            )}
+          </div>
           <p className="text-body-md text-[rgb(var(--color-text-secondary))]">
             Monitor and manage your creative generation queue
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button className="btn-secondary btn-md" onClick={refetch} disabled={loading}>
+            <RefreshCw size={18} className={clsx(loading && 'animate-spin')} />
+            Refresh
+          </button>
           <button className="btn-secondary btn-md">
             <Settings size={18} />
             Settings
@@ -133,11 +152,11 @@ export default function Generation() {
             </div>
             <div className="flex-1">
               <div className="text-caption text-[rgb(var(--color-text-tertiary))]">Success Rate</div>
-              <div className="font-medium text-success-600">98.5%</div>
+              <div className="font-medium text-success-600">{successRate}%</div>
             </div>
           </div>
           <div className="text-body-sm text-[rgb(var(--color-text-secondary))]">
-            {mockGenerationJobs.filter((j) => j.status === 'completed').length} today
+            {stats.completed} completed
           </div>
         </div>
       </motion.div>
@@ -145,7 +164,7 @@ export default function Generation() {
       {/* Tabs */}
       <motion.div variants={itemVariants} className="flex gap-2 mb-6 overflow-x-auto scrollbar-hide">
         {[
-          { id: 'all', label: 'All Jobs', count: mockGenerationJobs.length },
+          { id: 'all', label: 'All Jobs', count: jobs.length },
           { id: 'processing', label: 'Processing', count: stats.processing },
           { id: 'queued', label: 'Queued', count: stats.queued },
           { id: 'completed', label: 'Completed', count: stats.completed },
@@ -177,14 +196,16 @@ export default function Generation() {
       {/* Jobs List */}
       <motion.div variants={itemVariants}>
         <div className="space-y-4">
-          {filteredJobs.map((job) => (
-            <JobCard key={job.id} job={job} />
-          ))}
+          {loading && jobs.length === 0
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <div key={`sk-${i}`} className="card-lg h-24 bg-[rgb(var(--color-bg-tertiary))] animate-pulse" />
+              ))
+            : filteredJobs.map((job) => <JobCard key={job.id} job={job} />)}
         </div>
       </motion.div>
 
       {/* Empty State */}
-      {filteredJobs.length === 0 && (
+      {!loading && filteredJobs.length === 0 && (
         <motion.div
           variants={itemVariants}
           className="empty-state"
@@ -202,7 +223,7 @@ export default function Generation() {
   );
 }
 
-function JobCard({ job }: { job: typeof mockGenerationJobs[0] }) {
+function JobCard({ job }: { job: GenerationJob }) {
   const statusConfig = {
     processing: {
       icon: <RefreshCw size={18} className="animate-spin" />,
