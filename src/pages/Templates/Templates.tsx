@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
-  Filter,
   Plus,
   Grid,
   List,
@@ -12,16 +11,17 @@ import {
   Trash2,
   Copy,
   BarChart3,
-  Layers,
   Star,
   TrendingUp,
   Users,
-  Clock,
-  ChevronRight,
   X,
+  Database,
+  PackageOpen,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { mockTemplates } from '../../data/mockData';
+import { fetchTemplates } from '../../services/templates';
+import { useAsyncData } from '../../hooks/useAsyncData';
 import type { Template, TemplateCategory } from '../../types';
 
 const containerVariants = {
@@ -37,16 +37,6 @@ const itemVariants = {
   show: { opacity: 1, y: 0 },
 };
 
-const categories: { id: TemplateCategory | 'all'; label: string; count: number }[] = [
-  { id: 'all', label: 'All Templates', count: mockTemplates.length },
-  { id: 'sale', label: 'Sale', count: mockTemplates.filter((t) => t.category === 'sale').length },
-  { id: 'new-arrival', label: 'New Arrival', count: mockTemplates.filter((t) => t.category === 'new-arrival').length },
-  { id: 'bestseller', label: 'Bestseller', count: mockTemplates.filter((t) => t.category === 'bestseller').length },
-  { id: 'seasonal', label: 'Seasonal', count: mockTemplates.filter((t) => t.category === 'seasonal').length },
-  { id: 'discount', label: 'Discount', count: mockTemplates.filter((t) => t.category === 'discount').length },
-  { id: 'custom', label: 'Custom', count: mockTemplates.filter((t) => t.category === 'custom').length },
-];
-
 export default function Templates() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
@@ -54,7 +44,20 @@ export default function Templates() {
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
-  const filteredTemplates = mockTemplates.filter((template) => {
+  const { data: templates, loading, source } = useAsyncData(fetchTemplates, mockTemplates, []);
+  const isDemo = source === 'demo';
+
+  const categories: { id: TemplateCategory | 'all'; label: string; count: number }[] = [
+    { id: 'all', label: 'All Templates', count: templates.length },
+    { id: 'sale', label: 'Sale', count: templates.filter((t) => t.category === 'sale').length },
+    { id: 'new-arrival', label: 'New Arrival', count: templates.filter((t) => t.category === 'new-arrival').length },
+    { id: 'bestseller', label: 'Bestseller', count: templates.filter((t) => t.category === 'bestseller').length },
+    { id: 'seasonal', label: 'Seasonal', count: templates.filter((t) => t.category === 'seasonal').length },
+    { id: 'discount', label: 'Discount', count: templates.filter((t) => t.category === 'discount').length },
+    { id: 'custom', label: 'Custom', count: templates.filter((t) => t.category === 'custom').length },
+  ];
+
+  const filteredTemplates = templates.filter((template) => {
     const matchesSearch = template.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory =
       activeCategory === 'all' || template.category === activeCategory;
@@ -71,7 +74,15 @@ export default function Templates() {
       {/* Header */}
       <motion.div variants={itemVariants} className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-heading-xl text-[rgb(var(--color-text-primary))]">Templates</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-heading-xl text-[rgb(var(--color-text-primary))]">Templates</h1>
+            {isDemo && (
+              <span className="badge-warning inline-flex items-center gap-1" title="Set Supabase env vars to load live templates">
+                <Database size={12} />
+                Demo data
+              </span>
+            )}
+          </div>
           <p className="text-body-md text-[rgb(var(--color-text-secondary))]">
             Create and manage your creative templates
           </p>
@@ -137,7 +148,40 @@ export default function Templates() {
       </motion.div>
 
       {/* Templates Grid/List */}
-      {viewMode === 'grid' ? (
+      {loading && templates.length === 0 ? (
+        <motion.div
+          variants={containerVariants}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+        >
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={`sk-${i}`} className="card overflow-hidden">
+              <div className="aspect-[4/3] bg-[rgb(var(--color-bg-tertiary))] animate-pulse" />
+              <div className="p-4">
+                <div className="h-4 w-2/3 rounded bg-[rgb(var(--color-bg-tertiary))] animate-pulse" />
+              </div>
+            </div>
+          ))}
+        </motion.div>
+      ) : filteredTemplates.length === 0 ? (
+        <motion.div
+          variants={itemVariants}
+          className="card-lg p-12 flex flex-col items-center text-center gap-3"
+        >
+          <div className="w-12 h-12 rounded-xl bg-[rgb(var(--color-bg-tertiary))] flex items-center justify-center">
+            <PackageOpen size={24} className="text-[rgb(var(--color-text-tertiary))]" />
+          </div>
+          <div>
+            <div className="font-medium text-[rgb(var(--color-text-primary))]">
+              {searchQuery || activeCategory !== 'all' ? 'No templates match your filters' : 'No templates yet'}
+            </div>
+            <div className="text-caption text-[rgb(var(--color-text-secondary))]">
+              {searchQuery || activeCategory !== 'all'
+                ? 'Try a different search or category.'
+                : 'Create your first template to start generating creatives.'}
+            </div>
+          </div>
+        </motion.div>
+      ) : viewMode === 'grid' ? (
         <motion.div
           variants={containerVariants}
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
